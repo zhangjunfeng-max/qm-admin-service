@@ -6,10 +6,12 @@ import com.qm.admin.common.constants.Constants;
 import com.qm.admin.common.exception.BusinessException;
 import com.qm.admin.common.model.PageResult;
 import com.qm.admin.common.response.CommonResultCode;
+import com.qm.admin.common.util.ValueUtils;
 import com.qm.admin.system.dto.RoleCreateRequest;
 import com.qm.admin.system.dto.RolePageItemResponse;
 import com.qm.admin.system.dto.RolePageQuery;
 import com.qm.admin.system.dto.RoleUpdateRequest;
+import com.qm.admin.system.converter.RoleStructMapper;
 import com.qm.admin.system.dto.IdsAssignmentRequest;
 import com.qm.admin.system.dto.MenuAssignNode;
 import com.qm.admin.system.dto.RoleMenuAssignmentResponse;
@@ -109,12 +111,10 @@ public class SystemRoleService {
     @Transactional
     public RolePageItemResponse createRole(RoleCreateRequest request, SystemPrincipal principal) {
         ensureRoleCodeAvailable(request.roleCode(), principal.tenantId());
-        SystemRole role = new SystemRole();
+        SystemRole role = RoleStructMapper.INSTANCE.toEntity(request);
         role.setTenantId(principal.tenantId());
-        role.setRoleCode(request.roleCode());
-        role.setRoleName(request.roleName());
-        role.setStatus(defaultValue(request.status(), Constants.YES));
-        role.setRemark(defaultString(request.remark()));
+        role.setStatus(ValueUtils.defaultIfNull(request.status(), Constants.YES));
+        role.setRemark(ValueUtils.defaultString(request.remark()));
         roleMapper.insert(role);
         return getRole(role.getId(), principal);
     }
@@ -122,16 +122,15 @@ public class SystemRoleService {
     @Transactional
     public RolePageItemResponse updateRole(Long roleId, RoleUpdateRequest request, SystemPrincipal principal) {
         RolePageItemResponse current = getRole(roleId, principal);
-        int status = defaultValue(request.status(), current.getStatus());
+        int status = ValueUtils.defaultIfNull(request.status(), current.getStatus());
         if (status == Constants.NO && isCurrentUserRole(roleId, principal)) {
             throw new BusinessException(CommonResultCode.CONFLICT, "不能禁用当前登录用户绑定的角色");
         }
 
-        SystemRole role = new SystemRole();
+        SystemRole role = RoleStructMapper.INSTANCE.toEntity(request);
         role.setId(roleId);
-        role.setRoleName(request.roleName());
         role.setStatus(status);
-        role.setRemark(defaultString(request.remark()));
+        role.setRemark(ValueUtils.defaultString(request.remark()));
         roleMapper.updateById(role);
         cacheInvalidator.tenant(principal.tenantId());
         return getRole(roleId, principal);
@@ -177,11 +176,4 @@ public class SystemRoleService {
                 .eq(SystemUserRole::getRoleId, roleId)) > 0;
     }
 
-    private int defaultValue(Integer value, Integer defaultValue) {
-        return value == null ? defaultValue : value;
-    }
-
-    private String defaultString(String value) {
-        return value == null ? "" : value;
-    }
 }

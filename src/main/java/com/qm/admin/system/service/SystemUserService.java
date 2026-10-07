@@ -6,6 +6,7 @@ import com.qm.admin.common.constants.Constants;
 import com.qm.admin.common.exception.BusinessException;
 import com.qm.admin.common.model.PageResult;
 import com.qm.admin.common.response.CommonResultCode;
+import com.qm.admin.common.util.ValueUtils;
 import com.qm.admin.system.dto.UserCreateRequest;
 import com.qm.admin.system.dto.UserInfoResponse;
 import com.qm.admin.system.dto.UserInfoRoleRow;
@@ -15,6 +16,7 @@ import com.qm.admin.system.dto.UserUpdateRequest;
 import com.qm.admin.system.dto.IdsAssignmentRequest;
 import com.qm.admin.system.dto.RoleAssignOption;
 import com.qm.admin.system.dto.UserRoleAssignmentResponse;
+import com.qm.admin.system.converter.UserStructMapper;
 import com.qm.admin.system.entity.SystemUser;
 import com.qm.admin.system.entity.SystemUserRole;
 import com.qm.admin.system.entity.SystemUserTenant;
@@ -133,21 +135,19 @@ public class SystemUserService {
             throw new BusinessException(CommonResultCode.CONFLICT, "用户名已存在");
         }
 
-        SystemUser user = new SystemUser();
-        user.setUsername(request.username());
+        SystemUser user = UserStructMapper.INSTANCE.toUser(request);
         user.setPasswordHash(passwordEncoder.encode(request.password()));
-        user.setRealName(request.realName());
-        user.setAvatar(defaultString(request.avatar()));
-        user.setDescription(defaultString(request.description()));
+        user.setAvatar(ValueUtils.defaultString(request.avatar()));
+        user.setDescription(ValueUtils.defaultString(request.description()));
         user.setHomePath(DEFAULT_HOME_PATH);
-        user.setStatus(defaultValue(request.accountStatus(), Constants.YES));
+        user.setStatus(ValueUtils.defaultIfNull(request.accountStatus(), Constants.YES));
         userMapper.insert(user);
 
-        SystemUserTenant membership = new SystemUserTenant();
+        SystemUserTenant membership = UserStructMapper.INSTANCE.toMembership(request);
         membership.setTenantId(principal.tenantId());
         membership.setUserId(user.getId());
-        membership.setIsTenantAdmin(defaultValue(request.isTenantAdmin(), Constants.NO));
-        membership.setStatus(defaultValue(request.memberStatus(), Constants.YES));
+        membership.setIsTenantAdmin(ValueUtils.defaultIfNull(request.isTenantAdmin(), Constants.NO));
+        membership.setStatus(ValueUtils.defaultIfNull(request.memberStatus(), Constants.YES));
         membership.setCreateBy(principal.userId());
         membership.setUpdateBy(principal.userId());
         userTenantMapper.insert(membership);
@@ -157,24 +157,24 @@ public class SystemUserService {
     @Transactional
     public UserPageItemResponse updateUser(Long userId, UserUpdateRequest request, SystemPrincipal principal) {
         UserPageItemResponse current = getUser(userId, principal);
-        int accountStatus = defaultValue(request.accountStatus(), current.getAccountStatus());
-        int memberStatus = defaultValue(request.memberStatus(), current.getMemberStatus());
+        int accountStatus = ValueUtils.defaultIfNull(request.accountStatus(), current.getAccountStatus());
+        int memberStatus = ValueUtils.defaultIfNull(request.memberStatus(), current.getMemberStatus());
         if (userId.equals(principal.userId())
                 && (accountStatus == Constants.NO || memberStatus == Constants.NO)) {
             throw new BusinessException(CommonResultCode.CONFLICT, "不能禁用当前登录用户");
         }
 
-        SystemUser user = new SystemUser();
+        SystemUser user = UserStructMapper.INSTANCE.toUser(request);
         user.setId(userId);
-        user.setRealName(request.realName());
-        user.setAvatar(defaultString(request.avatar()));
-        user.setDescription(defaultString(request.description()));
+        user.setAvatar(ValueUtils.defaultString(request.avatar()));
+        user.setDescription(ValueUtils.defaultString(request.description()));
         user.setStatus(accountStatus);
         userMapper.updateById(user);
 
         SystemUserTenant membership = selectMembership(principal.tenantId(), userId);
+        UserStructMapper.INSTANCE.updateMembership(request, membership);
         membership.setStatus(memberStatus);
-        membership.setIsTenantAdmin(defaultValue(request.isTenantAdmin(), current.getIsTenantAdmin()));
+        membership.setIsTenantAdmin(ValueUtils.defaultIfNull(request.isTenantAdmin(), current.getIsTenantAdmin()));
         membership.setUpdateBy(principal.userId());
         userTenantMapper.updateById(membership);
 
@@ -242,11 +242,4 @@ public class SystemUserService {
         return homePath;
     }
 
-    private int defaultValue(Integer value, Integer defaultValue) {
-        return value == null ? defaultValue : value;
-    }
-
-    private String defaultString(String value) {
-        return value == null ? "" : value;
-    }
 }

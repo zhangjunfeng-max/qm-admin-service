@@ -1,6 +1,7 @@
 package com.qm.admin.system.dto;
 
 import com.qm.admin.common.model.PageQuery;
+import com.qm.admin.common.util.PageQueryUtils;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Max;
@@ -45,12 +46,12 @@ public class RolePageQuery extends PageQuery {
 
     @AssertTrue(message = "pageSize 仅支持 20、50、100、200")
     public boolean isSupportedPageSize() {
-        return SUPPORTED_PAGE_SIZES.contains(getPageSize());
+        return PageQueryUtils.isSupportedPageSize(getPageSize());
     }
 
     @AssertTrue(message = "创建时间起点不能晚于终点")
     public boolean isTimeRangeValid() {
-        return startTime == null || endTime == null || !startTime.isAfter(endTime);
+        return PageQueryUtils.isValidTimeRange(startTime, endTime);
     }
 
     public String getKeyword() {

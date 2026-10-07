@@ -7,9 +7,11 @@ import com.qm.admin.system.dto.MenuCreateRequest;
 import com.qm.admin.system.dto.MenuPageItemResponse;
 import com.qm.admin.system.dto.MenuPageQuery;
 import com.qm.admin.system.dto.MenuUpdateRequest;
+import com.qm.admin.system.converter.MenuStructMapper;
 import com.qm.admin.common.constants.Constants;
 import com.qm.admin.common.exception.BusinessException;
 import com.qm.admin.common.response.CommonResultCode;
+import com.qm.admin.common.util.ValueUtils;
 import com.qm.admin.system.entity.SystemMenu;
 import com.qm.admin.system.entity.SystemRoleMenu;
 import com.qm.admin.system.mapper.SystemMenuMapper;
@@ -80,10 +82,8 @@ public class SystemMenuService {
     public MenuPageItemResponse createMenu(MenuCreateRequest request) {
         Long parentId = defaultParentId(request.parentId());
         ensureParentExists(parentId);
-        SystemMenu menu = new SystemMenu();
-        apply(menu, parentId, request.menuType(), request.name(), request.path(), request.component(), request.redirect(),
-                request.icon(), request.title(), request.sort(), request.status(), request.visible(), request.keepAlive(),
-                request.affixTab(), request.authCode());
+        SystemMenu menu = MenuStructMapper.INSTANCE.toEntity(request);
+        normalizeMenu(menu, parentId);
         menuMapper.insert(menu);
         cacheInvalidator.all();
         return getMenu(menu.getId());
@@ -100,9 +100,8 @@ public class SystemMenuService {
         if (isDescendant(menuId, parentId)) {
             throw new BusinessException(CommonResultCode.CONFLICT, "菜单不能移动到自己的子节点下");
         }
-        apply(current, parentId, request.menuType(), request.name(), request.path(), request.component(), request.redirect(),
-                request.icon(), request.title(), request.sort(), request.status(), request.visible(), request.keepAlive(),
-                request.affixTab(), request.authCode());
+        MenuStructMapper.INSTANCE.updateEntity(request, current);
+        normalizeMenu(current, parentId);
         menuMapper.updateById(current);
         cacheInvalidator.all();
         return getMenu(menuId);
@@ -149,40 +148,28 @@ public class SystemMenuService {
         return false;
     }
 
-    private void apply(SystemMenu menu, Long parentId, String menuType, String name, String path, String component,
-                       String redirect, String icon, String title, Integer sort, Integer status, Integer visible,
-                       Integer keepAlive, Integer affixTab, String authCode) {
+    private void normalizeMenu(SystemMenu menu, Long parentId) {
         menu.setParentId(parentId);
-        menu.setMenuType(menuType);
-        menu.setName(name);
-        menu.setPath(defaultString(path));
-        menu.setComponent(defaultString(component));
-        menu.setRedirect(defaultString(redirect));
-        menu.setIcon(defaultString(icon));
-        menu.setTitle(title);
-        menu.setSort(sort == null ? 0 : sort);
-        menu.setStatus(status == null ? Constants.YES : status);
-        menu.setVisible(visible == null ? Constants.YES : visible);
-        menu.setKeepAlive(keepAlive == null ? Constants.NO : keepAlive);
-        menu.setAffixTab(affixTab == null ? Constants.NO : affixTab);
-        menu.setAuthCode(defaultString(authCode));
+        menu.setPath(ValueUtils.defaultString(menu.getPath()));
+        menu.setComponent(ValueUtils.defaultString(menu.getComponent()));
+        menu.setRedirect(ValueUtils.defaultString(menu.getRedirect()));
+        menu.setIcon(ValueUtils.defaultString(menu.getIcon()));
+        menu.setSort(menu.getSort() == null ? 0 : menu.getSort());
+        menu.setStatus(menu.getStatus() == null ? Constants.YES : menu.getStatus());
+        menu.setVisible(menu.getVisible() == null ? Constants.YES : menu.getVisible());
+        menu.setKeepAlive(menu.getKeepAlive() == null ? Constants.NO : menu.getKeepAlive());
+        menu.setAffixTab(menu.getAffixTab() == null ? Constants.NO : menu.getAffixTab());
+        menu.setAuthCode(ValueUtils.defaultString(menu.getAuthCode()));
     }
 
     private MenuPageItemResponse toPageItem(SystemMenu menu) {
-        MenuPageItemResponse response = new MenuPageItemResponse();
-        response.setId(menu.getId()); response.setParentId(menu.getParentId()); response.setMenuType(menu.getMenuType());
-        response.setName(menu.getName()); response.setPath(menu.getPath()); response.setComponent(menu.getComponent());
-        response.setRedirect(menu.getRedirect()); response.setIcon(menu.getIcon()); response.setTitle(menu.getTitle());
-        response.setSort(menu.getSort()); response.setStatus(menu.getStatus()); response.setVisible(menu.getVisible());
-        response.setKeepAlive(menu.getKeepAlive()); response.setAffixTab(menu.getAffixTab()); response.setAuthCode(menu.getAuthCode());
+        MenuPageItemResponse response = MenuStructMapper.INSTANCE.toPageItem(menu);
         response.setHasChildren(menuMapper.selectCount(Wrappers.<SystemMenu>lambdaQuery().eq(SystemMenu::getParentId, menu.getId())) > 0);
         response.setCreateTime(menu.getCreateTime()); response.setUpdateTime(menu.getUpdateTime());
         return response;
     }
 
     private Long defaultParentId(Long parentId) { return parentId == null ? 0L : parentId; }
-    private String defaultString(String value) { return value == null ? "" : value; }
-
     private MenuResponse toMenuResponse(SystemMenu menu, Map<Long, List<SystemMenu>> childrenByParent) {
         List<MenuResponse> children = new ArrayList<>();
         for (SystemMenu child : childrenByParent.getOrDefault(menu.getId(), List.of())) {

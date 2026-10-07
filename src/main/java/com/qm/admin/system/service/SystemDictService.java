@@ -6,6 +6,7 @@ import com.qm.admin.common.constants.Constants;
 import com.qm.admin.common.exception.BusinessException;
 import com.qm.admin.common.model.PageResult;
 import com.qm.admin.common.response.CommonResultCode;
+import com.qm.admin.common.util.ValueUtils;
 import com.qm.admin.system.dto.DictCreateRequest;
 import com.qm.admin.system.dto.DictItemBatchDeleteRequest;
 import com.qm.admin.system.dto.DictItemCreateRequest;
@@ -14,6 +15,8 @@ import com.qm.admin.system.dto.DictItemUpdateRequest;
 import com.qm.admin.system.dto.DictPageItemResponse;
 import com.qm.admin.system.dto.DictPageQuery;
 import com.qm.admin.system.dto.DictUpdateRequest;
+import com.qm.admin.system.converter.DictItemStructMapper;
+import com.qm.admin.system.converter.DictStructMapper;
 import com.qm.admin.system.entity.SystemDict;
 import com.qm.admin.system.entity.SystemDictItem;
 import com.qm.admin.system.mapper.SystemDictItemMapper;
@@ -51,12 +54,10 @@ public class SystemDictService {
     @Transactional
     public DictPageItemResponse createDict(DictCreateRequest request, SystemPrincipal principal) {
         ensureDictCodeAvailable(request.dictCode(), principal.tenantId(), null);
-        SystemDict dict = new SystemDict();
+        SystemDict dict = DictStructMapper.INSTANCE.toEntity(request);
         dict.setTenantId(principal.tenantId());
-        dict.setDictName(request.dictName());
-        dict.setDictCode(request.dictCode());
-        dict.setStatus(defaultValue(request.status(), Constants.YES));
-        dict.setRemark(defaultString(request.remark()));
+        dict.setStatus(ValueUtils.defaultIfNull(request.status(), Constants.YES));
+        dict.setRemark(ValueUtils.defaultString(request.remark()));
         dictMapper.insert(dict);
         return getDict(dict.getId(), principal);
     }
@@ -64,11 +65,10 @@ public class SystemDictService {
     @Transactional
     public DictPageItemResponse updateDict(Long dictId, DictUpdateRequest request, SystemPrincipal principal) {
         DictPageItemResponse current = getDict(dictId, principal);
-        SystemDict dict = new SystemDict();
+        SystemDict dict = DictStructMapper.INSTANCE.toEntity(request);
         dict.setId(dictId);
-        dict.setDictName(request.dictName());
-        dict.setStatus(defaultValue(request.status(), current.getStatus()));
-        dict.setRemark(defaultString(request.remark()));
+        dict.setStatus(ValueUtils.defaultIfNull(request.status(), current.getStatus()));
+        dict.setRemark(ValueUtils.defaultString(request.remark()));
         dictMapper.updateById(dict);
         return getDict(dictId, principal);
     }
@@ -104,10 +104,10 @@ public class SystemDictService {
     public DictItemResponse createItem(Long dictId, DictItemCreateRequest request, SystemPrincipal principal) {
         getDict(dictId, principal);
         ensureItemCodeAvailable(dictId, request.itemCode(), principal.tenantId(), null);
-        SystemDictItem item = new SystemDictItem();
+        SystemDictItem item = DictItemStructMapper.INSTANCE.toEntity(request);
         item.setTenantId(principal.tenantId());
         item.setDictId(dictId);
-        applyItem(item, request.itemName(), request.itemCode(), request.sort(), request.color(), request.icon(), request.status());
+        normalizeItem(item, request.sort(), request.color(), request.icon(), request.status());
         itemMapper.insert(item);
         return getItem(dictId, item.getId(), principal);
     }
@@ -116,7 +116,8 @@ public class SystemDictService {
     public DictItemResponse updateItem(Long dictId, Long itemId, DictItemUpdateRequest request, SystemPrincipal principal) {
         SystemDictItem current = requireItem(dictId, itemId, principal.tenantId());
         ensureItemCodeAvailable(dictId, request.itemCode(), principal.tenantId(), itemId);
-        applyItem(current, request.itemName(), request.itemCode(), request.sort(), request.color(), request.icon(), request.status());
+        DictItemStructMapper.INSTANCE.updateEntity(request, current);
+        normalizeItem(current, request.sort(), request.color(), request.icon(), request.status());
         itemMapper.updateById(current);
         return getItem(dictId, itemId, principal);
     }
@@ -156,20 +157,15 @@ public class SystemDictService {
         if (itemMapper.selectCount(query) > 0) throw new BusinessException(CommonResultCode.CONFLICT, "同一字典下字典项编码已存在");
     }
 
-    private void applyItem(SystemDictItem item, String name, String code, Integer sort, String color, String icon, Integer status) {
-        item.setItemName(name); item.setItemCode(code); item.setSort(sort == null ? 0 : sort);
-        item.setColor(defaultString(color)); item.setIcon(defaultString(icon)); item.setStatus(defaultValue(status, Constants.YES));
+    private void normalizeItem(SystemDictItem item, Integer sort, String color, String icon, Integer status) {
+        item.setSort(sort == null ? 0 : sort);
+        item.setColor(ValueUtils.defaultString(color)); item.setIcon(ValueUtils.defaultString(icon));
+        item.setStatus(ValueUtils.defaultIfNull(status, Constants.YES));
     }
 
     private DictItemResponse toItemResponse(SystemDictItem item) {
-        DictItemResponse response = new DictItemResponse();
-        response.setId(item.getId()); response.setDictId(item.getDictId()); response.setItemName(item.getItemName());
-        response.setItemCode(item.getItemCode()); response.setSort(item.getSort()); response.setColor(item.getColor());
-        response.setIcon(item.getIcon()); response.setStatus(item.getStatus()); response.setCreateTime(item.getCreateTime());
-        response.setUpdateTime(item.getUpdateTime()); return response;
+        return DictItemStructMapper.INSTANCE.toResponse(item);
     }
 
-    private int defaultValue(Integer value, int fallback) { return value == null ? fallback : value; }
-    private String defaultString(String value) { return value == null ? "" : value; }
     private BusinessException notFound(String message) { return new BusinessException(CommonResultCode.NOT_FOUND, message); }
 }
